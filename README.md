@@ -2,8 +2,10 @@
 
  -- Projet linux embarqué --
 
+GAURIER Florian
 JADOULT Thibault
 WITT Isaac-Andreï
+DRILLON Mathieu
 
 Partie GPIO :
 
