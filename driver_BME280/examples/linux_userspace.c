@@ -36,6 +36,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <signal.h>
 
 /******************************************************************************/
 /*!                         Own header files                                  */
@@ -139,9 +140,28 @@ int8_t stream_sensor_data_forced_mode(struct bme280_dev *dev);
 
 int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev);
 
+void intHandler(int sig)
+{
+    signal(sig, SIG_IGN);
+// Unexport the pin by writing to /sys/class/gpio/unexport
+    int fd = open("/sys/class/gpio/unexport", O_WRONLY);
+    if (fd == -1) {
+        perror("Unable to open /sys/class/gpio/unexport");
+        exit(1);
+    }
+
+    if (write(fd, "17", 2) != 2) {
+        perror("Error writing to /sys/class/gpio/unexport");
+        exit(1);
+    }
+
+    close(fd);
+    exit(0);
+}
 
 int main(int argc, char* argv[])
 {
+    signal(SIGINT, intHandler);
     struct bme280_dev dev;
 
     struct identifier id;
@@ -171,6 +191,35 @@ int main(int argc, char* argv[])
 
 //#endif
 
+    // Export the desired pin by writing to /sys/class/gpio/export
+    int fd = open("/sys/class/gpio/export", O_WRONLY);
+    if (fd == -1) {
+        perror("Unable to open /sys/class/gpio/export");
+        exit(1);
+    }
+
+    if (write(fd, "17", 2) != 2) {
+        perror("Error writing to /sys/class/gpio/export");
+        exit(1);
+    }
+
+    close(fd);
+
+// Set the pin to be an output by writing "out" to /sys/class/gpio/gpio17/direction
+
+    fd = open("/sys/class/gpio/gpio17/direction", O_WRONLY);
+    if (fd == -1) {
+        perror("Unable to open /sys/class/gpio/gpio17/direction");
+        exit(1);
+    }
+
+    if (write(fd, "out", 3) != 3) {
+        perror("Error writing to /sys/class/gpio/gpio17/direction");
+        exit(1);
+    }
+
+    close(fd);
+
     /* Make sure to select BME280_I2C_ADDR_PRIM or BME280_I2C_ADDR_SEC as needed */
     //id.dev_addr = BME280_I2C_ADDR_PRIM;
 
@@ -197,6 +246,21 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Failed to stream sensor data (code %+d).\n", rslt);
         exit(1);
     }
+
+
+// Unexport the pin by writing to /sys/class/gpio/unexport
+    fd = open("/sys/class/gpio/unexport", O_WRONLY);
+    if (fd == -1) {
+        perror("Unable to open /sys/class/gpio/unexport");
+        exit(1);
+    }
+
+    if (write(fd, "24", 2) != 2) {
+        perror("Error writing to /sys/class/gpio/unexport");
+        exit(1);
+    }
+
+    close(fd);
 
     return 0;
 }
@@ -363,35 +427,6 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
     rslt = bme280_set_sensor_settings(settings_sel, dev);
     rslt = bme280_set_sensor_mode(BME280_NORMAL_MODE, dev);
 
-// Export the desired pin by writing to /sys/class/gpio/export
-    int fd = open("/sys/class/gpio/export", O_WRONLY);
-    if (fd == -1) {
-        perror("Unable to open /sys/class/gpio/export");
-        exit(1);
-    }
-
-    if (write(fd, "17", 2) != 2) {
-        perror("Error writing to /sys/class/gpio/export");
-        exit(1);
-    }
-
-    close(fd);
-
-// Set the pin to be an output by writing "out" to /sys/class/gpio/gpio17/direction
-
-    fd = open("/sys/class/gpio/gpio17/direction", O_WRONLY);
-    if (fd == -1) {
-        perror("Unable to open /sys/class/gpio/gpio17/direction");
-        exit(1);
-    }
-
-    if (write(fd, "out", 3) != 3) {
-        perror("Error writing to /sys/class/gpio/gpio17/direction");
-        exit(1);
-    }
-
-    close(fd);
-
     printf("Temperature, Pressure, Humidity\r\n");
     while (1) {
     /* Delay while the sensor completes a measurement */
@@ -401,7 +436,7 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
 
     // Clignotement de la led 
 
-        fd = open("/sys/class/gpio/gpio17/value", O_WRONLY);
+        int fd = open("/sys/class/gpio/gpio17/value", O_WRONLY);
         if (fd == -1) {
             perror("Unable to open /sys/class/gpio/gpio17/value");
             exit(1);
@@ -411,7 +446,7 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
             exit(1);
         }
 
-        usleep(500000);
+        usleep(200000);
 
         if (write(fd, "0", 1) != 1) {
             perror("Error writing to /sys/class/gpio/gpio17/value");
@@ -421,20 +456,6 @@ int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
 
         close(fd);
     }
-
-// Unexport the pin by writing to /sys/class/gpio/unexport
-    fd = open("/sys/class/gpio/unexport", O_WRONLY);
-    if (fd == -1) {
-        perror("Unable to open /sys/class/gpio/unexport");
-        exit(1);
-    }
-
-    if (write(fd, "24", 2) != 2) {
-        perror("Error writing to /sys/class/gpio/unexport");
-        exit(1);
-    }
-
-    close(fd);
 
     return rslt;
 }
