@@ -33,6 +33,9 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <fcntl.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 
 /******************************************************************************/
 /*!                         Own header files                                  */
@@ -133,6 +136,10 @@ int8_t stream_sensor_data_forced_mode(struct bme280_dev *dev);
 /*!
  * @brief This function starts execution of the program.
  */
+
+int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev);
+
+
 int main(int argc, char* argv[])
 {
     struct bme280_dev dev;
@@ -183,7 +190,8 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
-    rslt = stream_sensor_data_forced_mode(&dev);
+    //rslt = stream_sensor_data_forced_mode(&dev);
+    rslt = stream_sensor_data_normal_mode(&dev);
     if (rslt != BME280_OK)
     {
         fprintf(stderr, "Failed to stream sensor data (code %+d).\n", rslt);
@@ -326,7 +334,107 @@ int8_t stream_sensor_data_forced_mode(struct bme280_dev *dev)
         }
 
         print_sensor_data(&comp_data);
+        usleep(100000);
     }
+
+    return rslt;
+}
+
+int8_t stream_sensor_data_normal_mode(struct bme280_dev *dev)
+{
+    int8_t rslt;
+    uint8_t settings_sel = 0;
+    struct bme280_data comp_data;
+    uint32_t req_delay;
+    req_delay = bme280_cal_meas_delay(&dev->settings);
+
+ /* Recommended mode of operation: Indoor navigation */
+    dev->settings.osr_h = BME280_OVERSAMPLING_1X;
+    dev->settings.osr_p = BME280_OVERSAMPLING_16X;
+    dev->settings.osr_t = BME280_OVERSAMPLING_2X;
+    dev->settings.filter = BME280_FILTER_COEFF_16;
+    dev->settings.standby_time = BME280_STANDBY_TIME_62_5_MS;
+
+    settings_sel = BME280_OSR_PRESS_SEL;
+    settings_sel |= BME280_OSR_TEMP_SEL;
+    settings_sel |= BME280_OSR_HUM_SEL;
+    settings_sel |= BME280_STANDBY_SEL;
+    settings_sel |= BME280_FILTER_SEL;
+    rslt = bme280_set_sensor_settings(settings_sel, dev);
+    rslt = bme280_set_sensor_mode(BME280_NORMAL_MODE, dev);
+
+// Export the desired pin by writing to /sys/class/gpio/export
+    int fd = open("/sys/class/gpio/export", O_WRONLY);
+    if (fd == -1) {
+        perror("Unable to open /sys/class/gpio/export");
+        exit(1);
+    }
+
+    if (write(fd, "17", 2) != 2) {
+        perror("Error writing to /sys/class/gpio/export");
+        exit(1);
+    }
+
+    close(fd);
+
+// Set the pin to be an output by writing "out" to /sys/class/gpio/gpio17/direction
+
+    fd = open("/sys/class/gpio/gpio17/direction", O_WRONLY);
+    if (fd == -1) {
+        perror("Unable to open /sys/class/gpio/gpio17/direction");
+        exit(1);
+    }
+
+    if (write(fd, "out", 3) != 3) {
+        perror("Error writing to /sys/class/gpio/gpio17/direction");
+        exit(1);
+    }
+
+    close(fd);
+
+    printf("Temperature, Pressure, Humidity\r\n");
+    while (1) {
+    /* Delay while the sensor completes a measurement */
+        dev->delay_us(req_delay, dev->intf_ptr);
+        rslt = bme280_get_sensor_data(BME280_ALL, &comp_data, dev);
+        print_sensor_data(&comp_data);
+
+    // Clignotement de la led 
+
+        fd = open("/sys/class/gpio/gpio17/value", O_WRONLY);
+        if (fd == -1) {
+            perror("Unable to open /sys/class/gpio/gpio17/value");
+            exit(1);
+        }
+        if (write(fd, "1", 1) != 1) {
+            perror("Error writing to /sys/class/gpio/gpio17/value");
+            exit(1);
+        }
+
+        usleep(500000);
+
+        if (write(fd, "0", 1) != 1) {
+            perror("Error writing to /sys/class/gpio/gpio17/value");
+            exit(1);
+        }
+        usleep(500000);
+
+        close(fd);
+    }
+
+// Unexport the pin by writing to /sys/class/gpio/unexport
+    fd = open("/sys/class/gpio/unexport", O_WRONLY);
+    if (fd == -1) {
+        perror("Unable to open /sys/class/gpio/unexport");
+        exit(1);
+    }
+
+    if (write(fd, "24", 2) != 2) {
+        perror("Error writing to /sys/class/gpio/unexport");
+        exit(1);
+    }
+
+    close(fd);
 
     return rslt;
 }
